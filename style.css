@@ -1,0 +1,61 @@
+body {
+	max-width: 800px;
+	margin: auto;
+	width: 90%;
+}
+
+.question {
+	font-size: 3em;
+	text-align: center;
+}
+
+.hanzi {
+	font-family: simsun;
+}
+
+.extra {
+	text-align: center;
+	opacity: 0.5;
+}
+
+.pinyin {
+	font-size: 1.5em;
+    font-weight: bold;
+}
+
+.tone-1 {
+    color: red;
+}
+
+.tone-2 {
+    color: orange;
+}
+
+.tone-3 {
+    color: green;
+}
+
+.tone-4 {
+    color: blue;
+}
+
+.tone-5 {
+    color: gray;
+}
+
+.component {
+	margin-bottom: 1em;
+}
+
+.component .component {
+    margin-left: 1.5em;
+}
+
+.component-hanzi {
+	padding-right: .5em;
+	font-family: simsun;
+	font-size:  2em;
+}
+
+.component-entry {
+}
