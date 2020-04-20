@@ -170,16 +170,37 @@ def fentry(e):
     return f"<div class=\"component-hanzi\">{e}</div>\n<div class=\"component-entry\">{component_entry}</div>\n"
 
 
-def fold_component(xs):
-    res = ""
-    for x in xs:
+def fold_component(xs, traversal='level'):
+    def preorder(xs):
+        res = ""
         res += "<div class=\"component\">\n"
-        if type(x) == list:
-            res += fold_component(x)
+        if type(xs) == list:
+            for x in xs:
+                res += preorder(x)
         else:
-            res += x
+            res += xs
         res += "</div>\n"
-    return res
+        return res
+
+    def level(xs):
+        res = ""
+        
+        queue = xs.copy()
+        while len(queue) > 0:
+            children = queue.pop(0)
+            if type(children) == list:
+                for child in children:
+                    queue.append(child)
+            else:
+                res += f"<div class=\"component\">{children}</div>"
+        return res
+
+    if traversal == 'preorder':
+        return preorder(xs)
+    elif traversal == 'level':
+        return level(xs)
+    else:
+        raise ValueError(traversal)
 
 
 # %%
@@ -235,7 +256,7 @@ def note(row):
         ])
 
 
-for _, row in df.iterrows():
+for i, row in df.iterrows():
     # do not add if entry is empty
     if row['Entry']:
         n = note(row)
