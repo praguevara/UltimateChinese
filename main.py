@@ -7,8 +7,12 @@ import re
 from decimal import Decimal
 import pandas as pd
 import json
+import dominate
+from dominate import dom_tag
+from dominate.tags import div, span, details, summary
+from typing import *
 
-df = pd.DataFrame(columns=['Hanzi', 'Order', 'Frequency',
+df = pd.DataFrame(columns=['Hanzi', 'Order', 'Traditional', 'Frequency',
                            'Strokes', 'Components', 'Entry', 'Comment'])
 with open('data/loach_word_order.json') as lo:
     loach_order = json.load(lo)
@@ -31,78 +35,114 @@ with open('data/char_strokes.json') as _s_f:
 for _k in df.index:
     df.at[_k, 'Strokes'] = _s[_k] if _k in _s else ''
 
+# %% dictionary
+
+dictionary_type = Dict[str, Tuple[str, List[Tuple[str, List[str]]]]]
+
+def read_dictionary(path: str) -> dictionary_type:
+    dictionary: dictionary_type = {}
+
+    with open(path) as dictionary_file:
+        for line in dictionary_file.readlines():
+            if line[0] == '#':
+                # skip comments
+                continue
+            m = re.match('(.*) (.*) \\[(.*)\\] /(.*)/', line)
+            if not m:
+                raise ValueError(f"Bad format on line {line}")
+
+            [traditional, simplified, pinyin, joined_meanings] = m.groups()
+
+            dictionary.setdefault(simplified, (traditional, []))
+            # a bit hacky
+            dictionary[simplified] = (
+                traditional,
+                dictionary[simplified][1] + [
+                    (
+                            pinyin,
+                            [meaning for meaning in joined_meanings.split('/')]
+                    )
+                ]
+            )
+            
+
+    return dictionary
+
+dictionary = read_dictionary('data/cedict_ts.u8')
+
 # %% entries
+def entries(df: pd.DataFrame, dictionary: dictionary_type):
 
+    def decode_pinyin(s):
+        PinyinToneMark = {
+            0: "aoeiuv\u00fc",
+            1: "\u0101\u014d\u0113\u012b\u016b\u01d6\u01d6",
+            2: "\u00e1\u00f3\u00e9\u00ed\u00fa\u01d8\u01d8",
+            3: "\u01ce\u01d2\u011b\u01d0\u01d4\u01da\u01da",
+            4: "\u00e0\u00f2\u00e8\u00ec\u00f9\u01dc\u01dc",
+        }
 
-def decode_pinyin(s):
-    PinyinToneMark = {
-        0: "aoeiuv\u00fc",
-        1: "\u0101\u014d\u0113\u012b\u016b\u01d6\u01d6",
-        2: "\u00e1\u00f3\u00e9\u00ed\u00fa\u01d8\u01d8",
-        3: "\u01ce\u01d2\u011b\u01d0\u01d4\u01da\u01da",
-        4: "\u00e0\u00f2\u00e8\u00ec\u00f9\u01dc\u01dc",
-    }
-
-    s = s.lower()
-    r = ""
-    t = ""
-    for c in s:
-        if c >= 'a' and c <= 'z':
-            t += c
-        elif c == ':':
-            assert t[-1] == 'u'
-            t = t[:-1] + "\u00fc"
-        else:
-            if c >= '0' and c <= '5':
-                tone = int(c) % 5
-                if tone != 0:
-                    m = re.search("[aoeiuv\u00fc]+", t)
-                    if m is None:
-                        t += c
-                    elif len(m.group(0)) == 1:
-                        t = t[:m.start(
-                            0)] + PinyinToneMark[tone][PinyinToneMark[0].index(m.group(0))] + t[m.end(0):]
-                    else:
-                        if 'a' in t:
-                            t = t.replace("a", PinyinToneMark[tone][0])
-                        elif 'o' in t:
-                            t = t.replace("o", PinyinToneMark[tone][1])
-                        elif 'e' in t:
-                            t = t.replace("e", PinyinToneMark[tone][2])
-                        elif t.endswith("ui"):
-                            t = t.replace("i", PinyinToneMark[tone][3])
-                        elif t.endswith("iu"):
-                            t = t.replace("u", PinyinToneMark[tone][4])
+        s = s.lower()
+        r = ""
+        t = ""
+        for c in s:
+            if c >= 'a' and c <= 'z':
+                t += c
+            elif c == ':':
+                assert t[-1] == 'u'
+                t = t[:-1] + "\u00fc"
+            else:
+                if c >= '0' and c <= '5':
+                    tone = int(c) % 5
+                    if tone != 0:
+                        m = re.search("[aoeiuv\u00fc]+", t)
+                        if m is None:
+                            t += c
+                        elif len(m.group(0)) == 1:
+                            t = t[:m.start(
+                                0)] + PinyinToneMark[tone][PinyinToneMark[0].index(m.group(0))] + t[m.end(0):]
                         else:
-                            t += "!"
-            r += t
-            t = ""
-    r += t
-    return r
+                            if 'a' in t:
+                                t = t.replace("a", PinyinToneMark[tone][0])
+                            elif 'o' in t:
+                                t = t.replace("o", PinyinToneMark[tone][1])
+                            elif 'e' in t:
+                                t = t.replace("e", PinyinToneMark[tone][2])
+                            elif t.endswith("ui"):
+                                t = t.replace("i", PinyinToneMark[tone][3])
+                            elif t.endswith("iu"):
+                                t = t.replace("u", PinyinToneMark[tone][4])
+                            else:
+                                t += "!"
+                r += t
+                t = ""
+        r += t
+        return r
+ 
+    # fill entries_dict from file
+   
+    for simplified in df.index:
+        if simplified in dictionary:
+            entries_html = div(cls='entries')
+            with entries_html:
+                for pinyin, meanings in dictionary[simplified][1]:
+                    entry_html = div(cls='entry')
+                    with entry_html:
+                        div(decode_pinyin(pinyin), cls=f'pinyin tone-{pinyin[-1]}')
+                        div(', '.join(meanings), cls='definition')
 
+            df.at[simplified, 'Entry'] = entries_html
 
-entries_dict = {}
+entries(df, dictionary)
 
-with open('data/cedict_ts.u8') as dictionary:
-    for line in dictionary.readlines():
-        if line[0] == '#':
-            continue
-        m = re.match('(.*) (.*) \\[(.*)\\] /(.*)/', line)
-        [_, simplified, pinyin, joined_meanings] = m.groups()
+# %% traditional
+def traditional(df: pd.DataFrame, dictionary: dictionary_type):
+    for simplified in df.index:
+        if simplified in dictionary:
+            traditional, _ = dictionary[simplified]
+            df.at[simplified, 'Traditional'] = traditional
 
-        if simplified not in entries_dict:
-            entries_dict[simplified] = []
-
-        entries_dict[simplified] += [(pinyin,
-                                      [meaning for meaning in joined_meanings.split('/')])]
-
-for k in df.index:
-    if k in entries_dict:
-        df.at[k, 'Entry'] = '\n'.join([f"<div class=\"entry\">{entry}</div>"
-                                       for entry in [f"<div class=\"pinyin tone-{pinyin[-1]}\">{decode_pinyin(pinyin)}</div> <div class=\"definition\">{', '.join(meanings)}</div>"
-                                                     for (pinyin, meanings) in entries_dict[k]]])
-
-df.fillna('', inplace=True)
+traditional(df, dictionary)
 
 # %% radicals
 with open('data/radicals.json') as radicals_file:
@@ -122,86 +162,58 @@ for radical in radicals:
                 df.at[variant, 'Comment'] = radical['comment']
 
 # %% Decomposition
-
-
 components_dict = {}
 
-with open('data/outlier_decomp.json') as d2:
-    d2 = json.load(d2)
-for k in df.index:
-    components_dict[k] = (d2[k] if k in d2 else [])
+with open('data/outlier_decomp.json') as _d2:
+    d2 = json.load(_d2)
+for _k in df.index:
+    components_dict[_k] = (d2[_k] if _k in d2 else [])
 
 
 def decompose(h):
     """
     Decomposes words into its characters and characters into components recursively.
     """
-    tree = []
+    def decompose_component(c):
+        components = []
+        if c in components_dict:
+            components = components_dict[c]
+        return (c, [decompose_component(subcomponent) for subcomponent in components])
+
+
     if len(h) > 1:
-        for hanzi in h:
-            tree.append(hanzi)
-            if (ds := decompose(hanzi)):
-                tree.append(ds)
+        # word
+        return (h, [decompose_component(hanzi) for hanzi in h])
     else:
-        if h in components_dict:
-            for component in components_dict[h]:
-                tree.append(component)
-                if (ds := decompose(component)):
-                    tree.append(ds)
-    return tree
+        return decompose_component(h)
 
 
-def mapover(xs, f):
-    res = []
-    for x in xs:
-        if type(x) == list:
-            res.append(mapover(x, f))
-        else:
-            res.append(f(x))
-    return res
+def process_components(cs) -> str:
+    def _process_components(cs, depth):
+        component, subcomponents = cs
+        with div() as entries:
+            if component in df.index:
+                if depth == 0 or not df.at[component, 'Entry']:
+                    # do not collapse first component or if no entries
+                    with div() as entry:
+                        entry += span(component, cls='hanzi entry-title')
+                        entry += df.at[component, 'Entry']
+                        for subcomponent in subcomponents:
+                            entry += _process_components(subcomponent, depth + 1)
+                else:
+                    with details() as ds:
+                        with summary():
+                            span(component, cls='hanzi entry-title')
+                        ds += df.at[component, 'Entry']
+                        for subcomponent in subcomponents:
+                            ds += _process_components(subcomponent, depth + 1)
+        return entries
 
+    return _process_components(cs, 0).render(pretty=False)
 
-def fentry(e):
-    component_entry = ""
-    try:
-        component_entry = df.at[e, 'Entry']
-    except:
-        component_entry = ''
-    return f"<div class=\"component-hanzi\">{e}</div>\n<div class=\"component-entry\">{component_entry}</div>\n"
+# %% cleanup
 
-
-def fold_component(xs, traversal='level'):
-    def preorder(xs):
-        res = ""
-        res += "<div class=\"component\">\n"
-        if type(xs) == list:
-            for x in xs:
-                res += preorder(x)
-        else:
-            res += xs
-        res += "</div>\n"
-        return res
-
-    def level(xs):
-        res = ""
-        
-        queue = xs.copy()
-        while len(queue) > 0:
-            children = queue.pop(0)
-            if type(children) == list:
-                for child in children:
-                    queue.append(child)
-            else:
-                res += f"<div class=\"component\">{children}</div>"
-        return res
-
-    if traversal == 'preorder':
-        return preorder(xs)
-    elif traversal == 'level':
-        return level(xs)
-    else:
-        raise ValueError(traversal)
-
+df.fillna('', inplace=True)
 
 # %%
 
@@ -216,10 +228,10 @@ ultimate_model = genanki.Model(
     name='Ultimate',
     fields=[
         {'name': 'Sort Field'},
-        {'name': 'Hanzi'},
+        {'name': 'Simplified'},
+        {'name': 'Traditional'},
         {'name': 'Frequency'},
         {'name': 'Strokes'},
-        {'name': 'Components'},
         {'name': 'Entry'},
         {'name': 'Comment'},
         {'name': 'Audio'}
@@ -247,20 +259,29 @@ def note(row):
         fields=[
             str(row['Order']),
             str(row.name),
+            str(row['Traditional']),
             str(row['Frequency']),
             str(row['Strokes']),
-            str(fold_component(mapover(decompose(row.name), fentry))),
-            row['Entry'],
+            process_components(decompose(row.name)),
             str(row['Comment']),
             f"[sound:ultimate_{row['Order']}.mp3]",
         ])
 
 
+_count = 0 # debug
 for i, row in df.iterrows():
+    # if _count > 100:
+    #     break
+
     # do not add if entry is empty
-    if row['Entry']:
-        n = note(row)
-        ultimate_deck.add_note(note(row))
+    # if not row['Entry']:
+    #   continue
+    
+    n = note(row)
+    ultimate_deck.add_note(note(row))
+
+    # print(n.fields)
+    _count += 1
 
 ultimate_package.write_to_file('ultimate.apkg')
 

@@ -4,19 +4,11 @@
 
 {{Audio}}
 
-<div id="entries">
-	<h3>Entries:</h3>
-	<p>{{Entry}}</p>
-</div>
 
-<hr>
-
-{{#Components}}
-<div id="components">
-	<h4>Components:</h3>
-	{{Components}}
-</div>
-{{/Components}}
+{{Entry}}
+{{^Entry}}
+This note does not have an entry
+{{/Entry}}
 
 {{#Strokes}}
 <div id="strokes" class="extra">

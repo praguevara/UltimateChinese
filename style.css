@@ -43,19 +43,6 @@ body {
     color: gray;
 }
 
-.component {
-	margin-bottom: 1em;
-}
-
-.component .component {
-    margin-left: 1.5em;
-}
-
-.component-hanzi {
-	padding-right: .5em;
-	font-family: simsun;
-	font-size:  2em;
-}
-
-.component-entry {
+.entry-title {
+	font-size: 2em;
 }
